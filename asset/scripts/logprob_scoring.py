@@ -35,7 +35,7 @@ def logProbCalculation(
 	conversation_history: str,
 	model_response: str,
 	ground_truth_solution: str,
-	model_name: str = "gpt2",
+	model_name: str,
 	device: Optional[str] = None,
 ) -> Dict[str, Any]:
 	"""
@@ -100,15 +100,21 @@ def logProbCalculation(
 		"perplexity": perplexity,
 	}
 
-
+from mpi4py import MPI
 if __name__ == "__main__":
+    # Initialize MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()        # Task ID
+    size = comm.Get_size()        # Total number of MPI tasks
+
     PROMPT = """You are an AI assistant helping with problem solving. Given a conversation history and a model's response, evaluate how well the model's response leads to the ground truth solution."""
     
-    parser = argparse.ArgumentParser(description="Compute log-probability scores.")
+    parser = argparse.ArgumentParser(description="Compute log-probability scores (MPI-enabled).")
     parser.add_argument(
         "-m",
         "--model",
         dest="model_name",
+        required=True,
         help="Hugging Face model name or path",
     )
     parser.add_argument(
@@ -124,36 +130,37 @@ if __name__ == "__main__":
     ablation_tag = "ablation" if args.ablation else "regular"
     perform_ablation = args.ablation
 
+    # Data paths
     data_path = Path(__file__).resolve().parents[1] / "data" / "ReadyForLogProb.json"
-    output_dir = (
-        Path(__file__).resolve().parents[1]
-        / "data"
-        / "logprob_results"
-        / model_tag
-    )
+    output_dir = Path(__file__).resolve().parents[1] / "data" / "logprob_results" / model_tag
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = output_dir / f"{ablation_tag}.json"
+    # Each rank writes its own file to avoid conflicts
+    output_path = output_dir / f"{ablation_tag}_rank{rank}.json"
 
-    max_items: Optional[int] = None  # set to an int for quick runs
-
+    # Load full dataset once
     with data_path.open("r", encoding="utf-8") as f:
         data = json.load(f)
+
+    # Split data evenly across ranks
+    n = len(data)
+    chunk_size = (n + size - 1) // size  # ceil division to cover all data
+    start_idx = rank * chunk_size
+    end_idx = min(start_idx + chunk_size, n)
+    data_chunk = data[start_idx:end_idx]
+
+    # For reproducibility in ablation
+    random.seed(rank)
 
     results = []
     processed = 0
 
-    for item in data:
-        if max_items is not None and processed >= max_items:
-            break
-
+    for item in data_chunk:
         conversation_id = item.get("conversation_id")
         conversation_history = item.get("conversation_history", "")
         original_ground_truth = item.get("Ground_Truth_Solution", "")
 
-        if not conversation_id:
-            continue
-        if not original_ground_truth or original_ground_truth.strip() == "Not Available":
+        if not conversation_id or not original_ground_truth or original_ground_truth.strip() == "Not Available":
             continue
 
         # ---- Ground-truth selection (normal vs ablated) ----
@@ -172,11 +179,7 @@ if __name__ == "__main__":
         }
 
         for model_key, model_obj in item.items():
-            if model_key in {
-                "conversation_id",
-                "conversation_history",
-                "Ground_Truth_Solution",
-            }:
+            if model_key in {"conversation_id", "conversation_history", "Ground_Truth_Solution"}:
                 continue
             if not isinstance(model_obj, dict):
                 continue
@@ -191,25 +194,26 @@ if __name__ == "__main__":
                 model_response=model_response,
                 ground_truth_solution=ground_truth_solution,
                 model_name=model_name,
+                device=f"cuda:{rank % torch.cuda.device_count()}",  # assign GPU per rank
             )
 
             entry_result["models"][model_key] = {
-                 "response": model_response,
-                 "relevance_F1": model_obj.get("relevance_F1"),
-                 "providing_guidance": model_obj.get("Providing_Guidance"),
-                 "actionability": model_obj.get("Actionability"),
-                **result,  
+                "response": model_response,
+                "relevance_F1": model_obj.get("relevance_F1"),
+                "providing_guidance": model_obj.get("Providing_Guidance"),
+                "actionability": model_obj.get("Actionability"),
+                **result,
             }
 
         if entry_result["models"]:
             results.append(entry_result)
             processed += 1
 
+    # Write results for this rank
     with output_path.open("w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
     print(
-        f"Saved {len(results)} conversation results "
-        f"({'ablation' if perform_ablation else 'normal'}) "
-        f"to {output_path}"
+        f"[Rank {rank}] Processed {len(data_chunk)} items, "
+        f"saved {len(results)} conversation results to {output_path}"
     )
