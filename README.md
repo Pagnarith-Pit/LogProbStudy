@@ -1,8 +1,3 @@
-Judge Models:
-
-+ Gemini 3
-+ GPT 5
-
 Comparison Models:
 We will be generating log probability from this: 
 
@@ -11,3 +6,5 @@ We will be generating log probability from this:
 + openai/gpt-oss-20b
 + meta-llama/Llama-3.2-3B-Instruct
 + mistralai/Ministral-3-14B-Reasoning-2512
+
+Our control isn't about large LLM anymore. We now do ablation with null responses. 
