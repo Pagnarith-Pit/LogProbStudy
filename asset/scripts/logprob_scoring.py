@@ -52,11 +52,11 @@ def logProbCalculation(
 	"""
 
 	context = (
-		"Prompt:\n"
+		"System Prompt:\n"
 		f"{prompt.strip()}\n\n"
 		"Conversation_History:\n"
 		f"{conversation_history.strip()}\n\n"
-		"Model_Response:\n"
+		"Last_Tutor_Response:\n"
 		f"{model_response.strip()}\n\n"
 		"Ground_Truth_Solution:\n"
 	)
@@ -64,7 +64,7 @@ def logProbCalculation(
 	if device is None:
 		device = "cuda" if torch.cuda.is_available() else "cpu"
 
-	tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+	tokenizer = AutoTokenizer.from_pretrained(model_name)
 	model = AutoModelForCausalLM.from_pretrained(model_name)
 	model.to(device)
 	model.eval()
@@ -107,7 +107,13 @@ if __name__ == "__main__":
     rank = comm.Get_rank()        # Task ID
     size = comm.Get_size()        # Total number of MPI tasks
 
-    PROMPT = """You are an AI assistant helping with problem solving. Given a conversation history and a model's response, evaluate how well the model's response leads to the ground truth solution."""
+    PROMPT = """You are a noice **student** asking your tutor for help on different problems. Your goal is to respond naturally to the tutors last message. You may reflect, reason, ask questions, or even provide an answer if that feels like what a real student would do. Base your response **only on the Last_Tutor_Response and your current understanding**. Instructions:
+1. Read the tutors last message carefully.
+2. Respond as a student would, showing your **thought process or understanding**.
+3. Your response can include reasoning, clarifications, or a solution — whatever a real student might say next.
+4. Keep your response concise but realistic.
+5. Ensure your response is relevant to the topic.
+**Now, respond as a student**. """
     
     parser = argparse.ArgumentParser(description="Compute log-probability scores (MPI-enabled).")
     parser.add_argument(
