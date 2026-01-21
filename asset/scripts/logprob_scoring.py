@@ -31,6 +31,8 @@ def sanitize_model_name(model_name: str) -> str:
 	return model_name.replace("/", "_")
 
 def logProbCalculation(
+    model,
+    tokenizer,
 	prompt: str,
 	conversation_history: str,
 	model_response: str,
@@ -59,10 +61,6 @@ def logProbCalculation(
 		f"{model_response.strip()}\n\n"
 		"Ground_Truth_Solution:\n"
 	)
-
-	tokenizer = AutoTokenizer.from_pretrained(model_name)
-	model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cuda")
-	model.eval()
 
 	context_ids = tokenizer(context, return_tensors="pt").input_ids.to("cuda")
 	target_ids = tokenizer(ground_truth_solution, return_tensors="pt").input_ids.to("cuda")
@@ -96,7 +94,7 @@ def logProbCalculation(
 
 if __name__ == "__main__":
     counter = 0
-    PROMPT = """You are a noice **student** asking your tutor for help on different problems. Your goal is to respond naturally to the tutor's last message. You may reflect, reason, ask questions, or even provide an answer if that feels like what a real student would do. Base your response **only on the Last_Tutor_Response and your current understanding**. Instructions:
+    PROMPT = """You are a novice **student** asking your tutor for help on different problems. Your goal is to respond naturally to the tutor's last message. You may reflect, reason, ask questions, or even provide an answer if that feels like what a real student would do. Base your response **only on the Last_Tutor_Response and your current understanding**. Instructions:
 1. Read the tutor's last message carefully.
 2. Respond as a student would, showing your **thought process or understanding**.
 3. Your response can include reasoning, clarifications, or a solution — whatever a real student might say next.
@@ -121,6 +119,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     model_name = args.model_name
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+	model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cuda")
+	model.eval()
+
     model_tag = sanitize_model_name(model_name)
     ablation_tag = "ablation" if args.ablation else "regular"
     perform_ablation = args.ablation
@@ -176,6 +179,8 @@ if __name__ == "__main__":
                 continue
 
             result = logProbCalculation(
+                model=model,
+                tokenizer=tokenizer,
                 prompt=PROMPT,
                 conversation_history=conversation_history,
                 model_response=model_response,

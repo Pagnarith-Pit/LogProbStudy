@@ -5,55 +5,17 @@ from itertools import product
 # ------------------------------------------------------------
 # Step 1: Collect per-response scores
 # ------------------------------------------------------------
-
-def compute_scores_for_conversation(
-    conversation,
-    logprob_fn,
-    model_name="gpt2",
-    device=None,
-):
-    """
+"""
     Returns a list of dicts:
-    {
-        "model": str,
-        "logprob": float,
-        "guidance": 0 or 1
-    }
-    """
-    results = []
-
-    prompt = ""  # if you separate prompt elsewhere
-    history = conversation["conversation_history"]
-    ground_truth = conversation["Ground_Truth_Solution"]
-
-    for model_name_key, model_data in conversation.items():
-        if model_name_key in {
-            "conversation_id",
-            "conversation_history",
-            "Ground_Truth_Solution",
-        }:
-            continue
-
-        response_text = model_data["response"]
-        guidance_label = 1 if model_data["Providing_Guidance"] == "Yes" else 0
-
-        score = logprob_fn(
-            prompt=prompt,
-            conversation_history=history,
-            model_response=response_text,
-            ground_truth_solution=ground_truth,
-            model_name=model_name,
-            device=device,
-        )["avg_log_prob"]
-
-        results.append({
-            "model": model_name_key,
-            "logprob": score,
-            "guidance": guidance_label,
-        })
-
-    return results
-
+    [
+        {
+            "model": str,
+            "logprob": float,
+            "guidance": 0 or 1
+        }
+    ]
+"""
+ 
 
 # ------------------------------------------------------------
 # Step 2: Normalize scores within each conversation

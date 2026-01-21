@@ -1,7 +1,0 @@
-=====================================
-SLURM Job ID      : 20930479
-Array Task ID     : 0
-Running Model     : Qwen/Qwen3-30B-A3B-Instruct-2507-FP8
-Node List         : spartan-gpgpu002
-GPUs allocated    : 
-=====================================

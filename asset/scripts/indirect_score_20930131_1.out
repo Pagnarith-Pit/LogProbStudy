@@ -1,7 +1,0 @@
-=====================================
-SLURM Job ID      : 20930133
-Array Task ID     : 1
-Running Model     : openai/gpt-oss-20b
-Node List         : spartan-gpgpu180
-GPUs allocated    : 
-=====================================
