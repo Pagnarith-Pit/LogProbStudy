@@ -1,1 +1,5 @@
 Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:05<00:15,  5.16s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:09<00:09,  4.96s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:14<00:04,  4.88s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:15<00:00,  3.32s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:15<00:00,  3.93s/it]
+
+real	40m43.148s
+user	0m0.008s
+sys	0m0.006s

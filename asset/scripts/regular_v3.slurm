@@ -3,17 +3,17 @@
 #SBATCH --output=indirect_score_%A_%a.out
 #SBATCH --error=indirect_score_%A_%a.err
 
-#SBATCH -p gpu-l40s
+#SBATCH -p gpu-h100
 #SBATCH --nodes=1
 #SBATCH --mem=512GB
 #SBATCH --gres=gpu:1
 
-#SBATCH --array=0-1
+#SBATCH --array=0-2
 
 #SBATCH --mail-user=ppit@student.unimelb.edu.au
 #SBATCH --mail-type=BEGIN,END,FAIL
 
-#SBATCH --time=0-00:30:00
+#SBATCH --time=0-01:00:00
 
 ############################
 # Environment setup
@@ -32,11 +32,11 @@ export HF_HOME=/data/gpfs/projects/punim2402/.hf_cache
 
 
 MODELS=(
-  "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
-  "meta-llama/Llama-3.2-3B-Instruct"
-  # "microsoft/Phi-4-reasoning-plus"
-  # "openai/gpt-oss-20b"
-  # "google/gemma-3-12b-it"
+  # "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+  # "meta-llama/Llama-3.2-3B-Instruct"
+  "microsoft/Phi-4-reasoning-plus"
+  "openai/gpt-oss-20b"
+  "google/gemma-3-12b-it"
 )
 
 
