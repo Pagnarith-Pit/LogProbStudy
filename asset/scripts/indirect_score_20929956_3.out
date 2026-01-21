@@ -1,0 +1,7 @@
+=====================================
+SLURM Job ID      : 20929961
+Array Task ID     : 3
+Running Model     : meta-llama/Llama-3.2-3B-Instruct
+Node List         : spartan-gpgpu008
+GPUs allocated    : 
+=====================================
