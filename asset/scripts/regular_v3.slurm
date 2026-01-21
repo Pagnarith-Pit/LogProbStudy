@@ -55,4 +55,4 @@ echo "====================================="
 # Run experiment
 # DO NOT run with uv. uv run is wrapping python and breaking the MPI runtime linkage
 ############################
-time srun python logprob_scoring.py -m "$MODEL"
+time srun python logprob_scoring.py -m "$MODEL" -a
