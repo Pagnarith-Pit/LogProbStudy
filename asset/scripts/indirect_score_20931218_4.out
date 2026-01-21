@@ -1,7 +1,0 @@
-=====================================
-SLURM Job ID      : 20931218
-Array Task ID     : 4
-Running Model     : google/gemma-3-12b-it
-Node List         : spartan-gpgpu002
-GPUs allocated    : 
-=====================================
