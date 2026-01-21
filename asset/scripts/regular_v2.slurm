@@ -24,9 +24,10 @@ module load foss/2022a CUDA/12.4.1 UCX-CUDA/1.16.0-CUDA-12.4.1 cuDNN/9.6.0.74-CU
 module load Python/3.10.4
 module load mpi4py/3.1.4
 
+source /data/gpfs/projects/punim2402/IndirectScore/.venv/bin/activate
+
 # HuggingFace cache
 export HF_HOME=/data/gpfs/projects/punim2402/.hf_cache
-
 ############################
 # Model selection via array
 ############################
@@ -50,5 +51,6 @@ echo "====================================="
 
 ############################
 # Run experiment
+# DO NOT run with uv. uv run is wrapping python and breaking the MPI runtime linkage
 ############################
-time srun -n 2 uv run python logprob_scoring.py -m "$MODEL"
+time srun -n 2 python logprob_scoring.py -m "$MODEL"
