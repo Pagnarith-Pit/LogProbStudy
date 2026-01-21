@@ -5,10 +5,10 @@
 
 #SBATCH -p gpu-l40s
 #SBATCH --nodes=1
-#SBATCH --mem=256GB
+#SBATCH --mem=512GB
 #SBATCH --gres=gpu:1
 
-#SBATCH --array=0-1
+#SBATCH --array=0-4
 
 #SBATCH --mail-user=ppit@student.unimelb.edu.au
 #SBATCH --mail-type=BEGIN,END,FAIL
@@ -30,18 +30,16 @@ export HF_HOME=/data/gpfs/projects/punim2402/.hf_cache
 # Model selection via array
 ############################
 
-# EARLIER MODEL LIST WITH gpu-l40s
+
 MODELS=(
   "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
   "meta-llama/Llama-3.2-3B-Instruct"
+  "microsoft/Phi-4-reasoning-plus"
+  "openai/gpt-oss-20b"
+  "google/gemma-3-12b-it"
 )
 
-# WE RAN 3 MODELS WITH PARTITION gpu-h100
-# MODELS=(
-#   "microsoft/Phi-4-reasoning-plus"
-#   "openai/gpt-oss-20b"
-#   "google/gemma-3-12b-it"
-# )
+
 
 MODEL=${MODELS[$SLURM_ARRAY_TASK_ID]}
 
@@ -57,4 +55,4 @@ echo "====================================="
 # Run experiment
 # DO NOT run with uv. uv run is wrapping python and breaking the MPI runtime linkage
 ############################
-time srun python logprob_scoring.py -m "$MODEL" -a
+time srun python logprob_scoring.py -m "$MODEL"

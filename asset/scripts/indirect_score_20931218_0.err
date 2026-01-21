@@ -1,0 +1,9 @@
+  File "/data/gpfs/projects/punim2402/IndirectScore/asset/scripts/logprob_scoring.py", line 65
+    context_ids = tokenizer(context, return_tensors="pt").input_ids.to("cuda")
+                                                                              ^
+IndentationError: unindent does not match any outer indentation level
+srun: error: spartan-gpgpu002: task 0: Exited with exit code 1
+
+real	0m0.649s
+user	0m0.007s
+sys	0m0.005s
