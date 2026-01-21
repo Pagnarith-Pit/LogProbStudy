@@ -1,6 +1,0 @@
-MXFP4 quantization requires Triton and kernels installed: CUDA requires Triton >= 3.4.0, XPU requires Triton >= 3.5.0, we will default to dequantizing the model to bf16
-Loading checkpoint shards:   0%|          | 0/3 [00:00<?, ?it/s]Loading checkpoint shards:  33%|███▎      | 1/3 [00:01<00:03,  1.84s/it]Loading checkpoint shards:  67%|██████▋   | 2/3 [00:03<00:01,  1.79s/it]Loading checkpoint shards: 100%|██████████| 3/3 [00:05<00:00,  1.62s/it]Loading checkpoint shards: 100%|██████████| 3/3 [00:05<00:00,  1.67s/it]
-
-real	2m9.687s
-user	0m0.005s
-sys	0m0.007s

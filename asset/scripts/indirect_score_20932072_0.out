@@ -1,8 +1,0 @@
-=====================================
-SLURM Job ID      : 20932085
-Array Task ID     : 0
-Running Model     : microsoft/Phi-4-reasoning-plus
-Node List         : spartan-gpgpu011
-GPUs allocated    : 
-=====================================
-Loading model: microsoft/Phi-4-reasoning-plus...
