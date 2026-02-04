@@ -3,13 +3,12 @@
 #SBATCH --output=indirect_score_%A_%a.out
 #SBATCH --error=indirect_score_%A_%a.err
 
-#SBATCH -p gpu-l40s
+#SBATCH -p gpu-h100
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:2
-#SBATCH --ntasks-per-node=2
-#SBATCH --cpus-per-task=2
+#SBATCH --mem=512GB
+#SBATCH --gres=gpu:1
 
-#SBATCH --array=0-4
+#SBATCH --array=0-2
 
 #SBATCH --mail-user=ppit@student.unimelb.edu.au
 #SBATCH --mail-type=BEGIN,END,FAIL
@@ -22,22 +21,25 @@
 module purge
 module load foss/2022a CUDA/12.4.1 UCX-CUDA/1.16.0-CUDA-12.4.1 cuDNN/9.6.0.74-CUDA-12.4.1
 module load Python/3.10.4
-module load mpi4py/3.1.4
-
-source /data/gpfs/projects/punim2402/IndirectScore/.venv/bin/activate
+module load SciPy-bundle/2022.05
+source ~/venvs/venv-3.10.4/bin/activate
 
 # HuggingFace cache
 export HF_HOME=/data/gpfs/projects/punim2402/.hf_cache
 ############################
 # Model selection via array
 ############################
+
+
 MODELS=(
-  "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+  # "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+  # "meta-llama/Llama-3.2-3B-Instruct"
   "microsoft/Phi-4-reasoning-plus"
   "openai/gpt-oss-20b"
-  "meta-llama/Llama-3.2-3B-Instruct"
   "google/gemma-3-12b-it"
 )
+
+
 
 MODEL=${MODELS[$SLURM_ARRAY_TASK_ID]}
 
@@ -53,4 +55,4 @@ echo "====================================="
 # Run experiment
 # DO NOT run with uv. uv run is wrapping python and breaking the MPI runtime linkage
 ############################
-time srun -n 2 python logprob_scoring.py -m "$MODEL"
+time srun python logprob_scoring.py -m "$MODEL" -a
