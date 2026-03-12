@@ -6,7 +6,7 @@ from itertools import product
 # Step 1: Preprocess & Map
 # ------------------------------------------------------------
 
-def preprocess_samples_with_relevance(samples):
+def preprocess_samples_with_relevance(samples, guidance_dimension):
     processed_data = []
     guidance_map = {"Yes": 1.0, "To some extent": 0.5, "No": 0.0}
 
@@ -22,7 +22,7 @@ def preprocess_samples_with_relevance(samples):
             conv_results.append({
                 "model": model_name,
                 "logprob": metrics.get("perplexity", 0), # Note: Higher = More Confused
-                "guidance": guidance_map.get(metrics.get("actionability")),
+                "guidance": guidance_map.get(metrics.get(guidance_dimension)),
                 "relevance": metrics.get("relevance_F1", 0),
                 "length": word_count 
             })
@@ -74,8 +74,8 @@ def compute_pairwise_accuracy(all_conversations_results):
 # Step 4: Correlation & Execution
 # ------------------------------------------------------------
 
-def run_full_analysis(samples):
-    processed_convs = preprocess_samples_with_relevance(samples)
+def run_full_analysis(samples, guidance_dimension):
+    processed_convs = preprocess_samples_with_relevance(samples, guidance_dimension)
     
     all_norm_scores = []
     all_guidance_labels = []
