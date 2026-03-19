@@ -93,46 +93,6 @@ def score_sample_models_bertscore(
 
     return out
 
-def filter_irrelevant_responses(scored_sample: Dict[str, Any], threshold: float = 3.5):
-    model_data = scored_sample
-    model_names = list(model_data.keys())
-    scores = np.array([model_data[m]['f1'] for m in model_names])
-    
-    # 1. Calculate Robust Statistics
-    median_score = np.median(scores)
-    # MAD = Median of absolute differences from the median
-    mad = np.median(np.abs(scores - median_score))
-    
-    # 0.6745 is the standard consistency constant for normal distributions
-    # We use a tiny value for mad if it's 0 to avoid division by zero
-    modified_z_scores = 0.6745 * (scores - median_score) / (mad if mad > 0 else 1e-6)
-
-    kept_models = {}
-    discarded_models = []
-
-    for i, m_name in enumerate(model_names):
-        # We discard anything that deviates too far from the median
-        if abs(modified_z_scores[i]) > threshold:
-            discarded_models.append(m_name)
-        else:
-            kept_models[m_name] = model_data[m_name]
-
-    # 2. Safety Check: Relevance Floor
-    # Even if they are consistent, are they all consistently BAD?
-    # If the median relevance is below 0.80, the whole set is probably noise.
-    if median_score < 0.80:
-        return {"filter_status": "discarded_set_low_relevance_consensus"}
-
-    # 3. Safety Check: Remaining Diversity
-    if len(kept_models) < 2:
-        return {"filter_status": "discarded_set_no_consensus"}
-
-    return {
-        "filter_status": "processed",
-        "kept_models": kept_models,
-        "discarded_models": discarded_models,
-        "median_relevance": float(median_score)
-    }
 
 if __name__ == "__main__":
     # Open and load sample data
@@ -144,11 +104,9 @@ if __name__ == "__main__":
     processed_results = []
     for sample in data:
         scored = score_sample_models_bertscore(sample)
-        filtered = filter_irrelevant_responses(scored, threshold=3.5)
         processed_results.append({
             "conversation_id": sample.get("conversation_id"),
             "scored": scored,
-            "filtered": filtered
         })
     
     # Print summary of how many samples were processed

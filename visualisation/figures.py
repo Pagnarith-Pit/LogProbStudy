@@ -18,9 +18,9 @@ GROUP_LABELS   = ["No", "To some\nextent", "Yes"]   # wrapped for x-axis
 
 # Clean display names — edit here to change how models appear in figures
 MODEL_DISPLAY = {
-    "google_gemma-3-12b-it":                    "Gemma-3\n12B",
-    "meta-llama_Llama-3.2-3B-Instruct":         "LLaMA-3.2\n3B",
-    "microsoft_Phi-4-reasoning-plus":           "Phi-4\nReasoning+",
+    "google_gemma-3-12b-it":                    "Gemma-3B",
+    "meta-llama_Llama-3.2-3B-Instruct":         "LLaMA-3.2",
+    "microsoft_Phi-4-reasoning-plus":           "Phi-4\nReasoning",
     "openai_gpt-oss-20b":                       "GPT-OSS\n20B",
     "Qwen_Qwen3-30B-A3B-Instruct-2507-FP8":     "Qwen3\n30B",
 }
@@ -41,11 +41,75 @@ def load_json(path: Path) -> list:
         return json.load(f)
 
 
-def collect_boxplot_data(results_dir: Path) -> dict:
+# def collect_boxplot_data(results_dir: Path) -> dict:
+#     """
+#     Returns nested dict:
+#         data[model_key][dimension] = {"No": [...], "To some extent": [...], "Yes": [...]}
+#     log-prob values (avg_log_prob) grouped by guidance label.
+#     """
+#     data = {}
+#     for model_dir in sorted(results_dir.iterdir()):
+#         if not model_dir.is_dir():
+#             continue
+#         regular_path = model_dir / "regular.json"
+#         if not regular_path.exists():
+#             continue
+
+#         regular_data = load_json(regular_path)
+#         model_key    = model_dir.name
+#         data[model_key] = {}
+
+#         for dim in GUIDANCE_DIMS:
+#             groups = {"No": [], "To some extent": [], "Yes": []}
+#             for conv in regular_data:
+#                 for model_name, metrics in conv.get("models", {}).items():
+#                     label = metrics.get(dim)
+#                     lp    = metrics.get("avg_log_prob")
+#                     if label in groups and lp is not None:
+#                         groups[label].append(lp)
+#             data[model_key][dim] = groups
+
+#     return data
+
+def normalize_within_conversation(records: list) -> list:
+    """Subtract conversation-mean log-prob from each record (in-place)."""
+    scores = np.array([r["logprob"] for r in records])
+    mean   = scores.mean()
+    for r in records:
+        r["norm_logprob"] = r["logprob"] - mean
+    return records
+
+
+def filter_outliers_iqr(values: list[float], whisker_width: float = 1.5) -> list[float]:
+    """Remove extreme values using the IQR rule for cleaner visual scaling."""
+    if len(values) < 4:
+        return values
+
+    arr = np.asarray(values, dtype=float)
+    q1, q3 = np.percentile(arr, [25, 75])
+    iqr = q3 - q1
+    if iqr == 0:
+        return values
+
+    lower = q1 - whisker_width * iqr
+    upper = q3 + whisker_width * iqr
+    filtered = arr[(arr >= lower) & (arr <= upper)]
+
+    # If filtering is too aggressive, fall back to original values.
+    if len(filtered) < max(3, int(0.4 * len(arr))):
+        return values
+
+    return filtered.tolist()
+
+
+def collect_violin_data(results_dir: Path) -> dict:
     """
     Returns nested dict:
-        data[model_key][dimension] = {"No": [...], "To some extent": [...], "Yes": [...]}
-    log-prob values (avg_log_prob) grouped by guidance label.
+        data[model_key][dimension] = {
+            "No": [...], "To some extent": [...], "Yes": [...]
+        }
+    Values are within-conversation normalised log-probs (norm_logprob),
+    consistent with the correlation analysis.
     """
     data = {}
     for model_dir in sorted(results_dir.iterdir()):
@@ -61,16 +125,26 @@ def collect_boxplot_data(results_dir: Path) -> dict:
 
         for dim in GUIDANCE_DIMS:
             groups = {"No": [], "To some extent": [], "Yes": []}
+
             for conv in regular_data:
-                for model_name, metrics in conv.get("models", {}).items():
+                records = []
+                for metrics in conv.get("models", {}).values():
                     label = metrics.get(dim)
                     lp    = metrics.get("avg_log_prob")
-                    if label in groups and lp is not None:
-                        groups[label].append(lp)
+                    if label in GUIDANCE_MAP and lp is not None:
+                        records.append({"label": label, "logprob": lp})
+
+                if not records:
+                    continue
+
+                normalize_within_conversation(records)
+
+                for r in records:
+                    groups[r["label"]].append(r["norm_logprob"])
+
             data[model_key][dim] = groups
 
     return data
-
 
 def collect_ablation_data(results_dir: Path) -> dict:
     """
@@ -130,86 +204,107 @@ def collect_ablation_data(results_dir: Path) -> dict:
     return ablation
 
 
-# ── Figure 1: Box plots ─────────────────────────────────────────────────────
+# ── Figure 1: Violin + strip, 2 rows × 5 columns ──────────────────────────
 
-def plot_boxplots(data: dict, output_path: Path):
+def plot_violins(data: dict, output_path: Path):
     """
-    5-row × 2-column grid.
-    Rows = models, columns = guidance dimensions.
-    Each cell: three side-by-side box plots (No / To some extent / Yes).
+    2 rows (guidance dimensions) × 5 columns (models).
+    Each cell: three violins (No / To some extent / Yes) with jittered strip
+    overlay and mean marker. Y-axis is within-conversation normalised log-prob.
+    sharey='row' gives each dimension its own consistent scale.
     """
     model_keys = [k for k in MODEL_DISPLAY if k in data]
     n_models   = len(model_keys)
     n_dims     = len(GUIDANCE_DIMS)
 
     fig, axes = plt.subplots(
-        n_models, n_dims,
-        figsize=(7, 2.6 * n_models),
+        n_dims, n_models,
+        figsize=(2.4 * n_models, 3.6 * n_dims),
         sharey="row",
-        constrained_layout=True,
+        constrained_layout=False,
     )
 
-    # Ensure axes is always 2-D
-    if n_models == 1:
+    if n_dims == 1:
         axes = axes[np.newaxis, :]
+    if n_models == 1:
+        axes = axes[:, np.newaxis]
 
-    for row, model_key in enumerate(model_keys):
-        for col, dim in enumerate(GUIDANCE_DIMS):
-            ax      = axes[row, col]
-            groups  = data[model_key][dim]
+    rng = np.random.default_rng(42)
 
-            plot_data   = [groups[g] for g in GROUP_ORDER]
-            positions   = np.arange(len(GROUP_ORDER))
+    for row, dim in enumerate(GUIDANCE_DIMS):
+        for col, model_key in enumerate(model_keys):
+            ax        = axes[row, col]
+            groups    = data[model_key][dim]
+            plot_data = [filter_outliers_iqr(groups[g]) for g in GROUP_ORDER]
+            positions = np.arange(len(GROUP_ORDER))
 
-            bp = ax.boxplot(
+            # Violin
+            parts = ax.violinplot(
                 plot_data,
                 positions=positions,
-                patch_artist=True,
-                widths=0.55,
-                showfliers=True,
-                flierprops=dict(marker="o", markersize=2.5,
-                                linestyle="none", alpha=0.35),
-                medianprops=dict(color="white", linewidth=2),
-                whiskerprops=dict(linewidth=0.8),
-                capprops=dict(linewidth=0.8),
-                boxprops=dict(linewidth=0.8),
+                widths=0.65,
+                showmedians=True,
+                showextrema=False,
             )
+            for body, colour in zip(parts["bodies"], BOX_PALETTE):
+                body.set_facecolor(colour)
+                body.set_edgecolor("none")
+                body.set_alpha(0.50)
+            parts["cmedians"].set_color("white")
+            parts["cmedians"].set_linewidth(1.8)
 
-            for patch, colour in zip(bp["boxes"], BOX_PALETTE):
-                patch.set_facecolor(colour)
-                patch.set_alpha(0.75)
-
-            # Overlay individual data points (strip)
-            for i, (group, colour) in enumerate(zip(GROUP_ORDER, BOX_PALETTE)):
-                vals = groups[group]
-                jitter = np.random.default_rng(42).uniform(-0.18, 0.18, len(vals))
+            # Jittered strip
+            for i, (vals, colour) in enumerate(zip(plot_data, BOX_PALETTE)):
+                vals = np.array(vals)
+                jitter = rng.uniform(-0.12, 0.12, len(vals))
                 ax.scatter(
                     np.full(len(vals), i) + jitter, vals,
-                    color=colour, alpha=0.18, s=5, zorder=2, linewidths=0,
+                    color=colour, alpha=0.20, s=5,
+                    zorder=3, linewidths=0,
                 )
 
-            # Labels
+            # Mean marker (white dot with dark edge)
+            for i, vals in enumerate(plot_data):
+                if vals:
+                    ax.scatter(
+                        i, np.mean(vals),
+                        color="white", s=30, zorder=4,
+                        linewidths=0.9, edgecolors="0.3",
+                    )
+
+            # Reference line at zero
+            ax.axhline(0, color="0.6", linewidth=0.6,
+                       linestyle="--", zorder=1)
+
             ax.set_xticks(positions)
-            ax.set_xticklabels(GROUP_LABELS, fontsize=8)
-            ax.tick_params(axis="y", labelsize=8)
-            ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
-            ax.grid(axis="y", linewidth=0.4, alpha=0.5)
+            ax.set_xticklabels(GROUP_LABELS, fontsize=7.5)
+            ax.tick_params(axis="y", labelsize=7.5)
+            ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.2f"))
+            ax.grid(axis="y", linewidth=0.3, alpha=0.4, zorder=0)
             ax.spines[["top", "right"]].set_visible(False)
 
-            # Column header (top row only)
+            # Column header: model name (top row only)
             if row == 0:
-                ax.set_title(DIM_LABELS[dim], fontsize=10, fontweight="bold", pad=6)
+                ax.set_title(
+                    MODEL_DISPLAY.get(model_key, model_key),
+                    fontsize=8.5, fontweight="bold", pad=5,
+                )
 
-            # Row label (left column only)
+            # Row label: dimension name (leftmost column only)
             if col == 0:
-                display = MODEL_DISPLAY.get(model_key, model_key)
-                ax.set_ylabel(display.replace("\n", " "), fontsize=8, labelpad=6)
+                ax.set_ylabel(DIM_LABELS[dim], fontsize=8.5, labelpad=6)
 
-    fig.supylabel("Avg. log-probability", fontsize=9, x=0.01)
-    fig.supxlabel("Expert guidance quality", fontsize=9, y=0.01)
+    # Reserve fixed margins so shared labels do not collide with ticks.
+    fig.subplots_adjust(left=0.11, right=0.995, bottom=0.15, top=0.88,
+                        wspace=0.18, hspace=0.22)
 
-    sns.despine(fig=fig, top=True, right=True)
-    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    fig.suptitle("Guidance Quality vs Normalised Log-Probability",
+                 fontsize=11, y=0.97)
+
+    fig.supylabel("Normalised log-probability", fontsize=12, x=0.03)
+    fig.supxlabel("Expert guidance quality",    fontsize=12, y=0.05)
+
+    fig.savefig(output_path, dpi=300)
     plt.close(fig)
     print(f"Figure 1 saved → {output_path}")
 
@@ -218,102 +313,96 @@ def plot_boxplots(data: dict, output_path: Path):
 
 def plot_ablation(ablation: dict, output_path: Path):
     """
-    Broken y-axis figure.
-      Top panel:    regular vs baseline (zoomed in, small differences)
-      Bottom panel: regular vs mismatch (full range)
+    Compact ablation figure.
 
-    One group of 2-bar clusters per model. The break is indicated by
-    diagonal tick marks on the shared spine.
+    Two side-by-side panels:
+      Left:  Regular vs baseline (no-last-response)
+      Right: Regular vs mismatch
+
+    This keeps the ablation comparisons readable while using much less
+    vertical space than a broken-axis design.
     """
     model_keys   = [k for k in MODEL_DISPLAY if k in ablation]
+    # Keep wrapped display names to reduce x-label crowding.
     display_names = [MODEL_DISPLAY[k] for k in model_keys]
 
     reg_vals  = [ablation[k]["mean_regular"]  for k in model_keys]
     base_vals = [ablation[k]["mean_baseline"] for k in model_keys]
     mis_vals  = [ablation[k]["mean_mismatch"] for k in model_keys]
 
-    n      = len(model_keys)
-    x      = np.arange(n)
-    width  = 0.26
+    n = len(model_keys)
+    if n == 0:
+        raise ValueError("No ablation data available for Figure 2.")
 
-    fig, (ax_top, ax_bot) = plt.subplots(
-        2, 1,
-        figsize=(8, 6),
-        gridspec_kw={"height_ratios": [1, 1.6]},
-        constrained_layout=True,
+    x = np.arange(n)
+    width = 0.34
+
+    fig, (ax_left, ax_right) = plt.subplots(
+        1, 2,
+        figsize=(7.2, 3.2),
+        sharex=True,
+        constrained_layout=False,
     )
 
-    # ── Top panel: regular vs baseline ──
-    for ax in (ax_top, ax_bot):
-        ax.bar(x - width / 2, reg_vals,  width, label="Regular",     color=CLR_REGULAR,  alpha=0.82, zorder=3)
-        ax.bar(x + width / 2, base_vals, width, label="Baseline\n(no last response)", color=CLR_BASELINE, alpha=0.82, zorder=3)
+    # Left: Regular vs baseline
+    ax_left.bar(x - width / 2, reg_vals,  width,
+                label="Regular", color=CLR_REGULAR, alpha=0.84, zorder=3)
+    ax_left.bar(x + width / 2, base_vals, width,
+                label="Baseline (no last response)",
+                color=CLR_BASELINE, alpha=0.84, zorder=3)
 
-    # Mismatch bars only in bottom panel
-    ax_bot.bar(x, mis_vals, width * 1.1,
-               label="Mismatch", color=CLR_MISMATCH, alpha=0.75,
-               zorder=2, bottom=0)
+    # Right: Regular vs mismatch
+    ax_right.bar(x - width / 2, reg_vals, width,
+                 label="Regular", color=CLR_REGULAR, alpha=0.84, zorder=3)
+    ax_right.bar(x + width / 2, mis_vals, width,
+                 label="Mismatch", color=CLR_MISMATCH, alpha=0.78, zorder=3)
 
-    # ── Y-axis limits ──
-    # Determine a tight range for the top panel (reg vs baseline)
-    all_rb   = reg_vals + base_vals
-    rb_min   = min(all_rb)
-    rb_max   = max(all_rb)
-    rb_pad   = max(abs(rb_max - rb_min) * 0.5, 0.05)
-    ax_top.set_ylim(rb_min - rb_pad, rb_max + rb_pad)
+    # Axis limits tuned per panel for readability
+    all_left = reg_vals + base_vals
+    left_min = min(all_left)
+    left_max = max(all_left)
+    left_pad = max((left_max - left_min) * 0.35, 0.04)
+    ax_left.set_ylim(left_min - left_pad, left_max + left_pad)
 
-    # Bottom panel: cover mismatch down to its min
-    bot_min  = min(mis_vals) * 1.08
-    bot_max  = rb_max + rb_pad   # same top as ax_top so bars align visually
-    ax_bot.set_ylim(bot_min, bot_max)
+    all_right = reg_vals + mis_vals
+    right_min = min(all_right)
+    right_max = max(all_right)
+    right_pad = max((right_max - right_min) * 0.08, 0.06)
+    ax_right.set_ylim(right_min - right_pad, right_max + right_pad)
 
-    # Hide the inner spines to create the break effect
-    ax_top.spines["bottom"].set_visible(False)
-    ax_bot.spines["top"].set_visible(False)
-    ax_top.tick_params(bottom=False)
-
-    # ── Diagonal break markers ──
-    d       = 0.012   # size of diagonal tick
-    kwargs  = dict(transform=fig.transFigure, color="k",
-                   linewidth=0.8, clip_on=False)
-    # Get the y positions of the break in figure coordinates
-    pos_top = ax_top.get_position()
-    pos_bot = ax_bot.get_position()
-    y_break_top = pos_top.y0
-    y_break_bot = pos_bot.y1
-
-    for x_frac in [pos_top.x0 + 0.01, pos_top.x1 - 0.01]:
-        fig.add_artist(
-            plt.Line2D([x_frac - d, x_frac + d],
-                       [y_break_top - d * 0.6, y_break_top + d * 0.6], **kwargs)
-        )
-        fig.add_artist(
-            plt.Line2D([x_frac - d, x_frac + d],
-                       [y_break_bot - d * 0.6, y_break_bot + d * 0.6], **kwargs)
-        )
-
-    # ── Axes formatting ──
-    for ax in (ax_top, ax_bot):
+    # Shared formatting
+    for ax in (ax_left, ax_right):
         ax.set_xticks(x)
-        ax.set_xticklabels(display_names, fontsize=8.5)
+        ax.set_xticklabels(display_names, fontsize=8)
+        ax.tick_params(axis="x", pad=3)
         ax.tick_params(axis="y", labelsize=8)
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.2f"))
         ax.grid(axis="y", linewidth=0.4, alpha=0.5, zorder=0)
         ax.spines[["top", "right"]].set_visible(False)
+        for lbl in ax.get_xticklabels():
+            lbl.set_rotation(18)
+            lbl.set_rotation_mode("anchor")
+            lbl.set_ha("right")
+            lbl.set_linespacing(1.05)
 
-    ax_top.spines["top"].set_visible(False)
+    ax_left.set_title("Regular vs Baseline", fontsize=9.5, pad=8)
+    ax_right.set_title("Regular vs Mismatch", fontsize=9.5, pad=8)
 
-    # Shared y-label
-    fig.supylabel("Mean avg. log-probability", fontsize=9, x=0.01)
+    fig.suptitle("Ablation Comparison by Model", fontsize=11, y=0.99)
+    fig.supxlabel("Model", fontsize=9, y=0.05)
+    fig.supylabel("Mean avg. log-probability", fontsize=9, x=0.02)
 
-    # Panel annotations
-    ax_top.set_title("Regular vs. baseline (no-last-response)", fontsize=9,
-                     loc="left", pad=4)
-    ax_bot.set_title("Regular vs. mismatch", fontsize=9,
-                     loc="left", pad=4)
+    # Single global legend keeps panel area uncluttered.
+    legend_handles = [
+        plt.Line2D([], [], color=CLR_REGULAR,  lw=8, alpha=0.84),
+        plt.Line2D([], [], color=CLR_BASELINE, lw=8, alpha=0.84),
+        plt.Line2D([], [], color=CLR_MISMATCH, lw=8, alpha=0.78),
+    ]
+    legend_labels = ["Regular", "Baseline (no last response)", "Mismatch"]
+    fig.legend(legend_handles, legend_labels, ncol=3, frameon=False,
+               loc="upper center", bbox_to_anchor=(0.5, 0.93), fontsize=8)
 
-    # Legend (top panel only)
-    ax_top.legend(fontsize=8, frameon=False, ncol=2, loc="upper right")
-    ax_bot.legend(fontsize=8, frameon=False, ncol=1, loc="lower right")
+    fig.subplots_adjust(left=0.11, right=0.995, bottom=0.31, top=0.77, wspace=0.25)
 
     sns.despine(fig=fig, top=True, right=True)
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
@@ -333,6 +422,7 @@ def main():
         "--output-dir", default="./figures",
         help="Directory where figures will be saved (default: ./figures)."
     )
+
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir)
@@ -340,13 +430,16 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("Loading data...")
-    boxplot_data  = collect_boxplot_data(results_dir)
+    violin_data   = collect_violin_data(results_dir)
     ablation_data = collect_ablation_data(results_dir)
 
-    print(f"Found {len(boxplot_data)} model(s): {list(boxplot_data.keys())}")
+    print(f"Found {len(violin_data)} model(s): {list(violin_data.keys())}")
 
-    print("\nGenerating Figure 1 (box plots)...")
-    plot_boxplots(boxplot_data, output_dir / "figure1_boxplots.pdf")
+    print("\nGenerating Figure 1 (violin plots)...")
+    plot_violins(violin_data, output_dir / "figure1_violins.pdf")
+
+    print("\nGenerating Figure 1 (violin + strip, 2×5 grid)...")
+    plot_violins(violin_data, output_dir / "figure1_violins.pdf")
 
     print("\nGenerating Figure 2 (ablation)...")
     plot_ablation(ablation_data, output_dir / "figure2_ablation.pdf")

@@ -301,7 +301,7 @@ def kruskal_wallis_by_guidance(all_conversations_results: list) -> dict:
 # Step 9: Main Correlation Analysis (existing, fixed)
 # ============================================================
 
-def run_correlation_analysis(all_conversations_results: list, guidance_dimension: str) -> dict:
+def run_correlation_analysis(all_conversations_results: list) -> dict:
     all_norm_scores, all_guidance, all_relevance, all_lengths = [], [], [], []
 
     for conv in all_conversations_results:
@@ -409,7 +409,7 @@ def main(args):
     baseline_dict  = preprocess_no_last_response(no_lr_data)
 
     # Run analyses
-    corr_results   = run_correlation_analysis(regular_convs, guidance_dim)
+    corr_results   = run_correlation_analysis(regular_convs)
     kw_results     = kruskal_wallis_by_guidance(regular_convs)
     ablation_nlr   = ablation_vs_no_last_response(regular_convs, baseline_dict)
     ablation_mis   = ablation_vs_mismatch(regular_convs, mismatch_convs)

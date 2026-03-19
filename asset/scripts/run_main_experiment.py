@@ -91,7 +91,6 @@ def logProbCalculation(
 
 
 if __name__ == "__main__":
-    # Updated 'noice' to 'novice' for better persona acting
     PROMPT = """You are a novice **student** asking your tutor for help on different problems. Your goal is to respond naturally to the tutor's last message. You may reflect, reason, ask questions, or even provide an answer if that feels like what a real student would do. Base your response **only on the Last_Tutor_Response and your current understanding**. Instructions:
 1. Read the tutor's last message carefully.
 2. Respond as a student would, showing your **thought process or understanding**.
@@ -99,6 +98,16 @@ if __name__ == "__main__":
 4. Keep your response concise but realistic.
 5. Ensure your response is relevant to the topic.
 **Now, respond as a student**."""
+
+## PRIOR PROMPTS USED IN EARLIER TESTS (RETAINED FOR REFERENCE):
+## PROMPT = """You are playing the role of a novice student asking questions to your tutor. Respond to the latest tutor message by considering the Last Tutor Response and what you currently understand.
+# Instructions: (1) Understand the tutor’s last message thoroughly.
+# (2) Reply like a student would, reflecting your thoughts or reasoning.
+# (3) Keep your response brief, realistic, and on-topic. Respond now as a student.""""
+
+## PROMPT = """Imagine you are a student working through a challenging concept with your tutor. Your task is to think out loud, speculate, or propose ideas, showing how you process the information. Use the tutor’s last message as a reference and draw on your current understanding. Responses should feel authentic, reflective, and relevant. Respond now as the student.
+
+## PROMPT = """You are a student attempting to solve a problem after receiving guidance from your tutor. Your goal is to predict the answer or next step based on the tutor’s last message and your current understanding of the topic. Think carefully about the hints or explanations provided, and respond as a student would when reasoning toward a solution. Keep your reply realistic, concise, and relevant. Now respond as the student, predicting the answer."""
 
     parser = argparse.ArgumentParser(description="Compute log-probability scores.")
     parser.add_argument(
