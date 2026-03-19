@@ -141,19 +141,37 @@ def ablation_vs_no_last_response(
     paired_regular = []
     paired_baseline = []
 
+    diffs = []
+    tutor_lengths = []
+
     for conv_results in regular_convs:
         conv_id = conv_results[0]["conversation_id"]
         if conv_id not in baseline_dict:
             continue
 
+        # Filter to only Yes (1.0) and To Some Extent (0.5)
+        informative = [r for r in conv_results if r["guidance"] >= 0.5]
+        if not informative:
+            continue  # skip conversations where all responses were "No"
+
         mean_regular = np.mean([r["logprob"] for r in conv_results])
         baseline_score = baseline_dict[conv_id]["logprob"]
+
+        diff = mean_regular - baseline_score
+        mean_length = np.mean([r["length"] for r in conv_results])
+        diffs.append(diff)
+        tutor_lengths.append(mean_length)
 
         paired_regular.append(mean_regular)
         paired_baseline.append(baseline_score)
 
     if len(paired_regular) < 2:
         return {"error": "Insufficient paired samples"}
+    
+    print('####' * 10)
+    print("Running Spearman correlation for length vs log-prob difference...")
+    rho, p = spearmanr(tutor_lengths, diffs)
+    print(f"Length vs log-prob drop: rho={rho:.4f}, p={p:.4f}")
 
     paired_regular = np.array(paired_regular)
     paired_baseline = np.array(paired_baseline)
@@ -378,12 +396,12 @@ def main(args):
     results_dir = Path(args.results_dir)
     guidance_dim = args.guidance_dimension
 
-    print(f"\nLoading results from: {results_dir}")
+    # print(f"\nLoading results from: {results_dir}")
     regular_data   = load_json(results_dir / "regular.json")
     mismatch_data  = load_json(results_dir / "mismatch.json")
     no_lr_data     = load_json(results_dir / "no_last_response.json")
 
-    print(f"Loaded: {len(regular_data)} regular | {len(mismatch_data)} mismatch | {len(no_lr_data)} no-last-response conversations")
+    # print(f"Loaded: {len(regular_data)} regular | {len(mismatch_data)} mismatch | {len(no_lr_data)} no-last-response conversations")
 
     # Preprocess
     regular_convs  = preprocess_regular(regular_data,  guidance_dim)
@@ -423,11 +441,21 @@ if __name__ == "__main__":
     '/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/meta-llama_Llama-3.2-3B-Instruct',
     '/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/microsoft_Phi-4-reasoning-plus',
     '/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/openai_gpt-oss-20b',
-    #'/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/Qwen_Qwen3-30B-A3B-Instruct-2507-FP8'
+    '/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/Qwen_Qwen3-30B-A3B-Instruct-2507-FP8'
 ]
+    # Extract model name from data path
+    def extract_model_name_from_path(p):
+        return p.split('/')[-1]
     
     guidance_dimension = ["providing_guidance", "actionability"]
+
     for p in PATH:
+        print(f"\n{'#'*80}")
+        print("Running results from model: ", extract_model_name_from_path(p))
+        print(f"{'#'*80}\n")
         for dim in guidance_dimension:
-            args = argparse.Namespace(results_dir=p, guidance_dimension=dim, output=None)
+            print(f"\n{'-'*60}")
+            print(f"Analyzing guidance dimension: {dim}")
+            print(f"{'-'*60}\n")
+            args = argparse.Namespace(results_dir=p, guidance_dimension=dim, output="main_results.json")
             main(args)
