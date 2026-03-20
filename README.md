@@ -1,10 +1,9 @@
 # AI Notice
 * Generated README Using Co-Pilot Agent
 * AI models (i.e., Claude Opus 4.5 and Gemini 3 used to debug and format code for readability)
+* No AI agent or model used in running or conducting any experiments
 
-## No AI agent or model used in running or conducting any experiments
-
-# IndirectScore
+# Do LLMs Respond to Instructional Quality as Students Should? A Likelihood-Based Probe of Pedagogical Sensitivity?
 
 This repository studies whether higher-quality tutor responses receive higher student-model likelihood under a fixed student prompt.
 
