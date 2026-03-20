@@ -1,19 +1,3 @@
-"""
-Stylistic Anchoring Diagnostic
-================================
-Tests whether the magnitude of (baseline - regular) log-prob drop
-correlates with stylistic distance between tutor response and ground truth.
-
-Three distance measures:
-  1. Vocabulary overlap (Jaccard distance) -- lexical
-  2. Sentence-BERT cosine distance         -- semantic
-  3. Length ratio                          -- surface
-
-If stylistic anchoring is the cause of baseline > regular, we expect:
-  - Higher stylistic distance → larger drop (more negative diff)
-  - i.e., rho should be negative and significant for distance measures
-"""
-
 import json
 import argparse
 import time
@@ -26,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 
 DEFAULT_OUTPUT_NAME = "Style Analysis.json"
 DEFAULT_GROUND_TRUTH_PATH = Path(
-    "/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/ReadyForLogProb.json"
+    # Add path to ground truth json file -  ReadyForLogProb.json"
 )
 
 
@@ -36,7 +20,6 @@ def load_json(path: Path) -> list:
 
 
 def jaccard_distance(text_a: str, text_b: str) -> float:
-    """Lexical overlap distance. 0 = identical vocab, 1 = no overlap."""
     tokens_a = set(text_a.lower().split())
     tokens_b = set(text_b.lower().split())
     if not tokens_a and not tokens_b:
@@ -47,19 +30,12 @@ def jaccard_distance(text_a: str, text_b: str) -> float:
 
 
 def length_ratio(text_a: str, text_b: str) -> float:
-    """
-    Absolute log ratio of word counts.
-    0 = same length, higher = more different in length.
-    """
     len_a = max(len(text_a.split()), 1)
     len_b = max(len(text_b.split()), 1)
     return abs(np.log(len_a / len_b))
 
 
-# ============================================================
-# Build paired records
-# ============================================================
-
+# Load and build paired records
 def _load_ground_truth_index() -> dict:
     gt_data = load_json(DEFAULT_GROUND_TRUTH_PATH)
     return {
@@ -76,12 +52,6 @@ def retrieveGroundTruthById(conv_id: str) -> str:
     return GROUND_TRUTH_BY_ID.get(conv_id, "")
 
 def build_pairs(regular_data: list, no_lr_data: list) -> list:
-    """
-    For each (conversation, model) in regular data, produce a record:
-      - logprob_diff  = regular_logprob - baseline_logprob  (negative = baseline wins)
-      - tutor_response text
-      - ground_truth text
-    """
     # Index no-last-response by conversation_id
     # All models share the same score per conversation, so just take first
     baseline_by_id = {}
@@ -120,13 +90,7 @@ def build_pairs(regular_data: list, no_lr_data: list) -> list:
 
     return pairs
 
-
-# ============================================================
-# Compute distances
-# ============================================================
-
 def add_lexical_distances(pairs: list) -> list:
-    """Add Jaccard distance and length ratio to each pair."""
     for p in pairs:
         p["jaccard_dist"] = jaccard_distance(p["tutor_response"], p["ground_truth"])
         p["length_ratio"] = length_ratio(p["tutor_response"], p["ground_truth"])
@@ -134,7 +98,6 @@ def add_lexical_distances(pairs: list) -> list:
 
 
 def add_semantic_distances(pairs: list, sbert_model, batch_size: int) -> list:
-    """Add SBERT cosine distance to each pair (batched for efficiency)."""
     print(f"  Computing SBERT embeddings for {len(pairs)} pairs (batch_size={batch_size})...")
 
     tutor_texts = [p["tutor_response"] for p in pairs]
@@ -153,16 +116,11 @@ def add_semantic_distances(pairs: list, sbert_model, batch_size: int) -> list:
     gt_embs = all_embs[split_index:]
 
     # Cosine similarity row-wise, then convert to distance
-    sims = (tutor_embs * gt_embs).sum(axis=1)  # dot product of normalized = cosine sim
+    sims = (tutor_embs * gt_embs).sum(axis=1) 
     for i, p in enumerate(pairs):
         p["sbert_cos_dist"] = float(1.0 - sims[i])
 
     return pairs
-
-
-# ============================================================
-# Run correlations
-# ============================================================
 
 def run_correlations(pairs: list, label: str) -> dict:
     diffs    = np.array([p["logprob_diff"]   for p in pairs])
@@ -187,39 +145,7 @@ def run_correlations(pairs: list, label: str) -> dict:
         "sbert_cos_dist_vs_diff": fmt(rho_s, p_s),
     }
 
-    _print_result(result)
     return result
-
-
-def _print_result(r: dict):
-    print(f"\n{'='*65}")
-    print(f"  Model: {r['model']}  (N={r['n_pairs']} pairs, "
-          f"mean diff={r['mean_logprob_diff']:.4f})")
-    print(f"{'='*65}")
-    print(f"  Interpretation: negative rho = more distant → bigger drop (supports anchoring)")
-    print(f"{'-'*65}")
-    print(f"  {'Measure':<30} {'rho':>7}  {'p':>8}  {'sig':>5}")
-    print(f"  {'-'*55}")
-    for key, label in [
-        ("jaccard_vs_diff",        "Jaccard distance (lexical)"),
-        ("length_ratio_vs_diff",   "Length ratio"),
-        ("sbert_cos_dist_vs_diff", "SBERT cosine distance (semantic)"),
-    ]:
-        d = r[key]
-        print(f"  {label:<30} {d['rho']:>7.4f}  {d['p']:>8.4f}  {d['sig']:>5}")
-    print(f"{'='*65}")
-
-
-def format_duration(seconds: float) -> str:
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-
-    minutes, remaining_seconds = divmod(seconds, 60)
-    if minutes < 60:
-        return f"{int(minutes)}m {remaining_seconds:.1f}s"
-
-    hours, remaining_minutes = divmod(minutes, 60)
-    return f"{int(hours)}h {int(remaining_minutes)}m {remaining_seconds:.1f}s"
 
 
 def resolve_device(requested_device: str) -> str:
@@ -276,7 +202,7 @@ def resolve_datasets(args) -> list:
         return datasets
 
     if not args.regular or not args.no_lr:
-        raise ValueError("Provide either --data-path or both --regular and --no-last-response.")
+        raise ValueError("Need --data-path or both --regular and --no-last-response.")
 
     regular_path = Path(args.regular).expanduser().resolve()
     no_lr_path = Path(args.no_lr).expanduser().resolve()
@@ -302,7 +228,6 @@ def analyze_dataset(
     label = dataset["label"]
     regular_path = dataset["regular_path"]
     no_lr_path = dataset["no_lr_path"]
-    dataset_start = time.perf_counter()
 
     print(f"\n[{dataset_index}/{total_datasets}] Starting dataset: {label}")
     print(f"  Source: {dataset['data_path']}")
@@ -341,15 +266,8 @@ def analyze_dataset(
             per_model_results[model_name] = run_correlations(model_pairs, label=model_name)
         results["per_model"] = per_model_results
 
-    elapsed = time.perf_counter() - dataset_start
-    print(f"\n[{dataset_index}/{total_datasets}] Finished dataset: {label} in {format_duration(elapsed)}")
-
     return results
 
-
-# ============================================================
-# Entry point
-# ============================================================
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Stylistic anchoring diagnostic.")
@@ -399,16 +317,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(args: argparse.Namespace) -> dict:
     run_start = time.perf_counter()
 
-    print("\nResolving datasets...")
     datasets = resolve_datasets(args)
     total_datasets = len(datasets)
-    print(f"  Found {total_datasets} dataset(s) to analyze")
 
     device = resolve_device(args.device)
     batch_size = resolve_batch_size(args.batch_size, device)
-    print(f"  Embedding device: {device}")
-    print(f"  Embedding batch size: {batch_size}")
 
+    # Attempt 15: Code hanged here. Print to debug 
     print(f"\nLoading SBERT model: {args.sbert_model}")
     sbert = load_sbert_model(args.sbert_model, device)
 
@@ -438,11 +353,8 @@ def main(args: argparse.Namespace) -> dict:
 
 if __name__ == "__main__":
     default_data_paths = [
-        "/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/google_gemma-3-12b-it",
-        "/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/meta-llama_Llama-3.2-3B-Instruct",
-        "/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/microsoft_Phi-4-reasoning-plus",
-        "/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/openai_gpt-oss-20b",
-        "/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/Qwen_Qwen3-30B-A3B-Instruct-2507-FP8",
+        # Add path to directories containing regular.json and no_last_response.json
+        # Removed since we used absolute path, which may reveal name during review process
     ]
 
     use_namespace_defaults = True # Set to False to use command-line arguments instead
@@ -463,7 +375,3 @@ if __name__ == "__main__":
         args = build_parser().parse_args()
 
     main(args)
-
-
-## Run the code with
-# nohup python -u stylisticDiff.py > "Style Analysis.log" 2>&1 &

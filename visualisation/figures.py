@@ -16,7 +16,6 @@ DIM_LABELS     = {"providing_guidance": "Providing Guidance",
 GROUP_ORDER    = ["No", "To some extent", "Yes"]
 GROUP_LABELS   = ["No", "To some\nextent", "Yes"]   # wrapped for x-axis
 
-# Clean display names — edit here to change how models appear in figures
 MODEL_DISPLAY = {
     "google_gemma-3-12b-it":                    "Gemma-3B",
     "meta-llama_Llama-3.2-3B-Instruct":         "LLaMA-3.2",
@@ -25,28 +24,23 @@ MODEL_DISPLAY = {
     "Qwen_Qwen3-30B-A3B-Instruct-2507-FP8":     "Qwen3\n30B",
 }
 
-# Palette: three muted colours for No / To some extent / Yes
-BOX_PALETTE = ["#c0392b", "#e67e22", "#27ae60"]   # red, amber, green
+
+BOX_PALETTE = ["#c0392b", "#e67e22", "#27ae60"]  
 
 # Ablation bar colours
-CLR_BASELINE = "#7f8c8d"   # muted gray  — no-last-response
-CLR_REGULAR  = "#2980b9"   # blue        — regular
-CLR_MISMATCH = "#c0392b"   # red         — mismatch
+CLR_BASELINE = "#7f8c8d"   
+CLR_REGULAR  = "#2980b9"  
+CLR_MISMATCH = "#c0392b"   
 
-
-# ── Data loading helpers ────────────────────────────────────────────────────
-
+# Loading data as step 1
 def load_json(path: Path) -> list:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
 # def collect_boxplot_data(results_dir: Path) -> dict:
-#     """
-#     Returns nested dict:
-#         data[model_key][dimension] = {"No": [...], "To some extent": [...], "Yes": [...]}
-#     log-prob values (avg_log_prob) grouped by guidance label.
-#     """
+#    PLOT TOO BIG. REQUIRES NEW VISUAL
+#    Maybe violin? Or strip plot with jitter? Or boxplot with fewer models/dimensions?
 #     data = {}
 #     for model_dir in sorted(results_dir.iterdir()):
 #         if not model_dir.is_dir():
@@ -72,7 +66,6 @@ def load_json(path: Path) -> list:
 #     return data
 
 def normalize_within_conversation(records: list) -> list:
-    """Subtract conversation-mean log-prob from each record (in-place)."""
     scores = np.array([r["logprob"] for r in records])
     mean   = scores.mean()
     for r in records:
@@ -81,7 +74,6 @@ def normalize_within_conversation(records: list) -> list:
 
 
 def filter_outliers_iqr(values: list[float], whisker_width: float = 1.5) -> list[float]:
-    """Remove extreme values using the IQR rule for cleaner visual scaling."""
     if len(values) < 4:
         return values
 
@@ -95,7 +87,6 @@ def filter_outliers_iqr(values: list[float], whisker_width: float = 1.5) -> list
     upper = q3 + whisker_width * iqr
     filtered = arr[(arr >= lower) & (arr <= upper)]
 
-    # If filtering is too aggressive, fall back to original values.
     if len(filtered) < max(3, int(0.4 * len(arr))):
         return values
 
@@ -103,14 +94,6 @@ def filter_outliers_iqr(values: list[float], whisker_width: float = 1.5) -> list
 
 
 def collect_violin_data(results_dir: Path) -> dict:
-    """
-    Returns nested dict:
-        data[model_key][dimension] = {
-            "No": [...], "To some extent": [...], "Yes": [...]
-        }
-    Values are within-conversation normalised log-probs (norm_logprob),
-    consistent with the correlation analysis.
-    """
     data = {}
     for model_dir in sorted(results_dir.iterdir()):
         if not model_dir.is_dir():
@@ -147,16 +130,6 @@ def collect_violin_data(results_dir: Path) -> dict:
     return data
 
 def collect_ablation_data(results_dir: Path) -> dict:
-    """
-    Returns dict keyed by model_key:
-        {
-            "mean_regular":  float,
-            "mean_baseline": float,
-            "mean_mismatch": float,
-        }
-    Averages are taken over all conversations (dimension-agnostic,
-    since ablation scores are the same across dimensions).
-    """
     ablation = {}
     for model_dir in sorted(results_dir.iterdir()):
         if not model_dir.is_dir():
@@ -204,15 +177,8 @@ def collect_ablation_data(results_dir: Path) -> dict:
     return ablation
 
 
-# ── Figure 1: Violin + strip, 2 rows × 5 columns ──────────────────────────
-
 def plot_violins(data: dict, output_path: Path):
-    """
-    2 rows (guidance dimensions) × 5 columns (models).
-    Each cell: three violins (No / To some extent / Yes) with jittered strip
-    overlay and mean marker. Y-axis is within-conversation normalised log-prob.
-    sharey='row' gives each dimension its own consistent scale.
-    """
+    # Much better looking
     model_keys = [k for k in MODEL_DISPLAY if k in data]
     n_models   = len(model_keys)
     n_dims     = len(GUIDANCE_DIMS)
@@ -308,20 +274,8 @@ def plot_violins(data: dict, output_path: Path):
     plt.close(fig)
     print(f"Figure 1 saved → {output_path}")
 
-
-# ── Figure 2: Ablation (broken y-axis) ─────────────────────────────────────
-
+# Figure 2: Ablation bar chart
 def plot_ablation(ablation: dict, output_path: Path):
-    """
-    Compact ablation figure.
-
-    Two side-by-side panels:
-      Left:  Regular vs baseline (no-last-response)
-      Right: Regular vs mismatch
-
-    This keeps the ablation comparisons readable while using much less
-    vertical space than a broken-axis design.
-    """
     model_keys   = [k for k in MODEL_DISPLAY if k in ablation]
     # Keep wrapped display names to reduce x-label crowding.
     display_names = [MODEL_DISPLAY[k] for k in model_keys]
@@ -409,9 +363,6 @@ def plot_ablation(ablation: dict, output_path: Path):
     plt.close(fig)
     print(f"Figure 2 saved → {output_path}")
 
-
-# ── Entry point ─────────────────────────────────────────────────────────────
-
 def main():
     parser = argparse.ArgumentParser(description="Generate paper figures.")
     parser.add_argument(
@@ -429,19 +380,10 @@ def main():
     output_dir  = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Loading data...")
     violin_data   = collect_violin_data(results_dir)
     ablation_data = collect_ablation_data(results_dir)
 
-    print(f"Found {len(violin_data)} model(s): {list(violin_data.keys())}")
-
-    print("\nGenerating Figure 1 (violin plots)...")
     plot_violins(violin_data, output_dir / "figure1_violins.pdf")
-
-    print("\nGenerating Figure 1 (violin + strip, 2×5 grid)...")
-    plot_violins(violin_data, output_dir / "figure1_violins.pdf")
-
-    print("\nGenerating Figure 2 (ablation)...")
     plot_ablation(ablation_data, output_dir / "figure2_ablation.pdf")
 
     print("\nDone. Both figures saved to:", output_dir.resolve())

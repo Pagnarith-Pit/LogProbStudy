@@ -11,9 +11,6 @@ def sample_irrelevant_ground_truth(
     current_conversation_id: str,
     all_items: list,
 ) -> str:
-    """
-    Sample a ground-truth solution from a different conversation.
-    """
     candidates = [
         item["Ground_Truth_Solution"]
         for item in all_items
@@ -40,9 +37,6 @@ def logProbCalculation(
     model_response: str,
     ground_truth_solution: str,
 ) -> Dict[str, Any]:
-    """
-    Compute log probability that a model would generate `ground_truth_solution`.
-    """
     context = (
         "System Prompt:\n"
         f"{prompt.strip()}\n\n"
@@ -74,7 +68,7 @@ def logProbCalculation(
     target_token_log_probs = []
     for i in range(target_len):
         token_id = target_ids[0, i]
-        # We look at the logit of the token BEFORE the target token to predict the target
+        # Targeting the log prob of target tok
         token_log_prob = log_probs[0, start_index + i - 1, token_id]
         target_token_log_probs.append(token_log_prob)
 

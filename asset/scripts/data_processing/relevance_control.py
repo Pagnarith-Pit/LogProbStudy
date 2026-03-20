@@ -7,7 +7,7 @@ import json
 
 def _default_device() -> str:
     try:
-        import torch  # type: ignore
+        import torch 
     except Exception:
         return "cpu"
 

@@ -6,26 +6,13 @@ from itertools import product
 from scipy.stats import spearmanr, wilcoxon, kruskal
 
 
-# ============================================================
-# Constants
-# ============================================================
-
 GUIDANCE_MAP = {"Yes": 1.0, "To some extent": 0.5, "No": 0.0}
 N_TESTS = 4  # for Bonferroni correction across Spearman tests
 
 
-# ============================================================
-# Step 1: Loading
-# ============================================================
-
 def load_json(path: Path) -> list:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
-
-
-# ============================================================
-# Step 2: Preprocessing
-# ============================================================
 
 def preprocess_regular(samples: list, guidance_dimension: str) -> list:
     """
@@ -81,22 +68,12 @@ def preprocess_no_last_response(samples: list) -> dict:
 
     return baseline
 
-
-# ============================================================
-# Step 3: Normalization
-# ============================================================
-
 def normalize_within_conversation(results: list) -> list:
     scores = np.array([r["logprob"] for r in results])
     mean_score = scores.mean()
     for r in results:
         r["norm_logprob"] = r["logprob"] - mean_score
     return results
-
-
-# ============================================================
-# Step 4: Significance helper (Bonferroni-corrected)
-# ============================================================
 
 def annotate_significance(p_value: float, alpha: float = 0.05, n_tests: int = N_TESTS) -> tuple:
     corrected = min(p_value * n_tests, 1.0)  # actual Bonferroni correction
@@ -109,11 +86,6 @@ def annotate_significance(p_value: float, alpha: float = 0.05, n_tests: int = N_
     else:
         return "ns", corrected
 
-
-# ============================================================
-# Step 5: Pairwise Accuracy
-# ============================================================
-
 def compute_pairwise_accuracy(all_conversations_results: list) -> float:
     correct = 0
     total = 0
@@ -124,11 +96,6 @@ def compute_pairwise_accuracy(all_conversations_results: list) -> float:
                 if r1["logprob"] > r2["logprob"]:
                     correct += 1
     return correct / total if total > 0 else float("nan")
-
-
-# ============================================================
-# Step 6: Ablation — Regular vs No-Last-Response (paired)
-# ============================================================
 
 def ablation_vs_no_last_response(
     regular_convs: list,
@@ -179,7 +146,7 @@ def ablation_vs_no_last_response(
 
     stat, p = wilcoxon(diff)
     mean_diff = diff.mean()
-    sig, p_corr = annotate_significance(p, n_tests=2)  # only 2 ablation tests
+    sig, p_corr = annotate_significance(p, n_tests=2)  # only ran 2 ablation tests
 
     return {
         "n_pairs": len(paired_regular),
@@ -193,19 +160,10 @@ def ablation_vs_no_last_response(
         "direction": "regular > baseline" if mean_diff > 0 else "baseline > regular",
     }
 
-
-# ============================================================
-# Step 7: Ablation — Regular vs Mismatch (paired)
-# ============================================================
-
 def ablation_vs_mismatch(
     regular_convs: list,
     mismatch_convs: list,
 ) -> dict:
-    """
-    Paired Wilcoxon test: for each conversation, compare mean regular
-    log-prob vs mean mismatch log-prob.
-    """
     regular_by_id = {
         conv[0]["conversation_id"]: np.mean([r["logprob"] for r in conv])
         for conv in regular_convs
@@ -213,7 +171,7 @@ def ablation_vs_mismatch(
     mismatch_by_id = {
         conv[0]["conversation_id"]: np.mean([r["logprob"] for r in conv])
         for conv in mismatch_convs
-        if conv  # guard empty
+        if conv  # guard against empty conversations
     }
 
     shared_ids = sorted(set(regular_by_id) & set(mismatch_by_id))
@@ -241,15 +199,7 @@ def ablation_vs_mismatch(
     }
 
 
-# ============================================================
-# Step 8: Ordinal Group Comparison (Kruskal-Wallis)
-# ============================================================
-
 def kruskal_wallis_by_guidance(all_conversations_results: list) -> dict:
-    """
-    Groups log-prob scores by guidance label and tests whether
-    Yes > To Some Extent > No using Kruskal-Wallis + pairwise Wilcoxon.
-    """
     groups = {0.0: [], 0.5: [], 1.0: []}
     for conv in all_conversations_results:
         for r in conv:
@@ -296,11 +246,6 @@ def kruskal_wallis_by_guidance(all_conversations_results: list) -> dict:
         ],
     }
 
-
-# ============================================================
-# Step 9: Main Correlation Analysis (existing, fixed)
-# ============================================================
-
 def run_correlation_analysis(all_conversations_results: list) -> dict:
     all_norm_scores, all_guidance, all_relevance, all_lengths = [], [], [], []
 
@@ -340,57 +285,6 @@ def run_correlation_analysis(all_conversations_results: list) -> dict:
     }
 
 
-# ============================================================
-# Step 10: Printing
-# ============================================================
-
-def print_section(title: str, data: dict):
-    print(f"\n{'='*65}")
-    print(f"  {title}")
-    print(f"{'='*65}")
-    if "error" in data:
-        print(f"  ERROR: {data['error']}")
-        return
-    for k, v in data.items():
-        if isinstance(v, dict):
-            print(f"  {k}:")
-            for kk, vv in v.items():
-                print(f"    {kk}: {vv}")
-        elif isinstance(v, list):
-            print(f"  {k}:")
-            for item in v:
-                print(f"    {item}")
-        else:
-            print(f"  {k}: {v}")
-
-
-def print_correlation_table(r: dict):
-    print(f"\n{'='*65}")
-    print(f"  Correlation Analysis  (N = {r['n_responses']} responses)")
-    print(f"{'='*65}")
-    print(f"{'Metric':<35} {'rho':>7}  {'p (raw)':>9}  {'p (Bonf.)':>10}  {'sig':>5}")
-    print(f"{'-'*65}")
-    fields = [
-        ("Pedagogy signal",        "pedagogy_signal"),
-        ("Relevance signal",       "relevance_signal"),
-        ("Length vs log-prob",     "length_vs_logprob_bias"),
-        ("Guidance vs length",     "guidance_vs_length_bias"),
-    ]
-    for label, key in fields:
-        d = r[key]
-        print(
-            f"{label:<35} {d['rho']:>7.4f}  {d['p_raw']:>9.4f}  "
-            f"{d['p_bonferroni']:>10.4f}  {d['significance']:>5}"
-        )
-    print(f"{'-'*65}")
-    print(f"{'Pairwise accuracy':<35} {r['pairwise_accuracy']:>7.4f}")
-    print(f"{'='*65}\n")
-
-
-# ============================================================
-# Entry Point
-# ============================================================
-
 def main(args):
 
     results_dir = Path(args.results_dir)
@@ -414,12 +308,6 @@ def main(args):
     ablation_nlr   = ablation_vs_no_last_response(regular_convs, baseline_dict)
     ablation_mis   = ablation_vs_mismatch(regular_convs, mismatch_convs)
 
-    # Print
-    print_correlation_table(corr_results)
-    print_section("Kruskal-Wallis: Guidance Quality Groups", kw_results)
-    print_section("Ablation: Regular vs No-Last-Response (Wilcoxon paired)", ablation_nlr)
-    print_section("Ablation: Regular vs Mismatch (Wilcoxon paired)", ablation_mis)
-
     # Save
     if args.output:
         output = {
@@ -437,12 +325,10 @@ def main(args):
 if __name__ == "__main__":
     
     PATH = [
-    '/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/google_gemma-3-12b-it',
-    '/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/meta-llama_Llama-3.2-3B-Instruct',
-    '/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/microsoft_Phi-4-reasoning-plus',
-    '/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/openai_gpt-oss-20b',
-    '/Users/ppit/Library/CloudStorage/OneDrive-TheUniversityofMelbourne/Desktop/IndirectScore/asset/data/logprob_results_v2/Qwen_Qwen3-30B-A3B-Instruct-2507-FP8'
-]
+        # Add path to log prob result dir
+        # Remove path since we used absolute path, which may reveal name during review process
+    ]
+
     # Extract model name from data path
     def extract_model_name_from_path(p):
         return p.split('/')[-1]
